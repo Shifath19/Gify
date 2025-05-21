@@ -1,29 +1,58 @@
 import {useEffect, useState} from "react";
+import {useNavigate} from "react-router-dom";
 import {GifState} from "../context/gif-context";
 import GifSearch from "./gif-search";
 import {Link} from "react-router-dom";
 import {HiEllipsisVertical, HiMiniBars3BottomRight} from "react-icons/hi2";
 
 const Header = () => {
+  const navigate = useNavigate();
   const [categories, setCategories] = useState([]);
   const [showCategories, setShowCategories] = useState(false);
+  const [isRandomLoading, setIsRandomLoading] = useState(false);
 
-  const {filter, setFilter, favorites} = GifState();
+  const {gf, filter, setFilter, favorites} = GifState();
 
   const fetchGifCategories = async () => {
-    const res = await fetch("/categories.json");
-    const {data} = await res.json();
-    setCategories(data);
+    try {
+      const {data} = await gf.categories();
+      setCategories(data);
+    } catch (error) {
+      console.error("Failed to fetch GIF categories from API", error);
+    }
   };
-
-  // const fetchGifCategories = async () => {
-  //   const {data} = await gf.categories();
-  //   setCategories(data);
-  // };
 
   useEffect(() => {
     fetchGifCategories();
   }, []);
+
+  const handleRandomGifClick = async () => {
+    setIsRandomLoading(true);
+    try {
+      const {data: randomGif} = await gf.random({
+        type: filter, // 'gifs' or 'stickers'
+        tag: filter === "stickers" ? undefined : "random", // API requires tag for 'gifs', optional for 'stickers'
+        rating: "g",
+      });
+
+      if (!randomGif || !randomGif.id) {
+        // The API response for random might have 'image_original_url' or similar, but 'id' is crucial for navigation
+        throw new Error("Invalid random GIF data received from API. Missing ID.");
+      }
+
+      // Determine navigation type based on current filter, ensuring it matches route structure (e.g., plural 'gifs', 'stickers')
+      // The randomGif.type from API might be singular 'gif'. We use our app's 'filter' which is plural.
+      const navType = filter; // filter is already 'gifs' or 'stickers'
+      navigate(`/${navType}/${randomGif.id}`);
+    } catch (error) {
+      console.error("Error fetching or navigating to random GIF:", error);
+      // TODO: Optionally, display a user-friendly error message on the UI
+    } finally {
+      setIsRandomLoading(false);
+      // Ensure categories dropdown is closed if the random button was clicked from there
+      // setShowCategories(false); // This might be too aggressive if button is also outside dropdown
+    }
+  };
 
   return (
     <nav>
@@ -57,6 +86,14 @@ const Header = () => {
             />
           </button>
 
+          <button
+            onClick={handleRandomGifClick}
+            className="px-4 py-1 transition ease-in-out hover:gradient border-b-4 hidden lg:block font-bold"
+            disabled={isRandomLoading}
+          >
+            {isRandomLoading ? "Loading..." : "Random GIF"}
+          </button>
+
           {favorites.length > 0 && (
             <div className="h-9 bg-gray-700 pt-1.5 px-6 cursor-pointer rounded">
               <Link to="/favorites">Favorite GIFs</Link>
@@ -81,7 +118,9 @@ const Header = () => {
               {categories?.map((category) => {
                 return (
                   <Link
-                    onClick={() => setShowCategories(false)}
+                    onClick={() => {
+                      setShowCategories(false);
+                    }}
                     className="transition ease-in-out font-bold"
                     key={category.name}
                     to={`/${category.name_encoded}`}
@@ -90,6 +129,17 @@ const Header = () => {
                   </Link>
                 );
               })}
+              {/* Adding Random GIF button for mobile menu as well */}
+              <button
+                onClick={async () => {
+                  setShowCategories(false); // Close dropdown first
+                  await handleRandomGifClick(); // Then fetch and navigate
+                }}
+                className="transition ease-in-out font-bold text-left"
+                disabled={isRandomLoading}
+              >
+                {isRandomLoading ? "Loading..." : "Random GIF"}
+              </button>
             </div>
           </div>
         )}
